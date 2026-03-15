@@ -1,5 +1,4 @@
 // Classes:- In JavaScript, classes are a way to define blueprints for creating objects (different type of object)
-// Promise is also a class
 
 class Rectangle {
    constructor(width, height, color) { // defines the structure of the objects created from that class
@@ -140,7 +139,8 @@ console.log(area1(r2));
 
 
 // Inheritance
-
+// Allows one class to inherit properties and methods from another class. 
+// This mechanism enables code reuse, making it easier to create new classes that are based on existing ones, without having to duplicate code.
 class Shape {
     constructor(color) {
         this.color = color;
@@ -150,7 +150,9 @@ class Shape {
 			console.log(`Painting with color ${this.color}`);
     }
 
-    area() {
+  area() {
+  //gives error if base class that extends this class have forgot to implement it
+  // expects to be override
         throw new Error('The area method must be implemented in the subclass');
     }
 
@@ -189,3 +191,9 @@ class Circle extends Shape {
         return `A circle with radius ${this.radius} and color ${this.color}`;
     }
 }
+
+const rectangle = new Rect(102, 20, "Red");
+const c1 = new Circle(20, "yellow");
+console.log(rectangle.area());
+console.log(rectangle.getDescription());
+rectangle.paint();
