@@ -3,6 +3,9 @@ import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import config from '../config/config.js';
 import Session from '../models/session.model.js';
+import { sendEmail } from '../service/email.service.js';
+import { Otp } from '../models/otp.model.js';
+import { generateOtp, getOtpHtml } from '../utils/utils.js';
 
 export const register = async (req, res) => {
     try {
@@ -25,47 +28,67 @@ export const register = async (req, res) => {
 
         const user = await User.create({ username, email, password: hashedPassword });
 
-        const refreshToken = jwt.sign({ 
-            id: user._id }
-            , config.JWT_SECRET, 
-            { 
-                expiresIn: '7d' 
-            }
-        );
+        // const refreshToken = jwt.sign({ 
+        //     id: user._id }
+        //     , config.JWT_SECRET, 
+        //     { 
+        //         expiresIn: '7d' 
+        //     }
+        // );
 
-        const refreshTokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
+        // const refreshTokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
         
-        const session = new Session({
+        // const session = new Session({
+        //     user: user._id,
+        //     refreshToken: refreshTokenHash,
+        //     ip: req.ip,
+        //     userAgent: req.headers['user-agent']
+        // });
+
+        // await session.save();
+
+        // const accessToken = jwt.sign({ 
+        //         id: user._id,
+        //         sessionId: session._id
+        //     }, config.JWT_SECRET, 
+        //     { 
+        //         expiresIn: '15m' 
+        //     }
+        // );
+
+        // res.cookie('refreshToken', refreshToken, {
+        //     httpOnly: true,
+        //     secure: config.NODE_ENV === 'production',
+        //     sameSite: 'strict',
+        //     maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+        // });
+
+        const otp = generateOtp();
+        const otpHash = crypto.createHash('sha256').update(otp).digest('hex');
+        const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // OTP valid for 10 minutes
+
+        await Otp.create({
+            email,
             user: user._id,
-            refreshToken: refreshTokenHash,
-            ip: req.ip,
-            userAgent: req.headers['user-agent']
+            otpHash,
+            expiresAt
         });
 
-        await session.save();
+        const otpHtml = getOtpHtml(otp);
 
-        const accessToken = jwt.sign({ 
-                id: user._id,
-                sessionId: session._id
-            }, config.JWT_SECRET, 
-            { 
-                expiresIn: '15m' 
-            }
+        await sendEmail(
+            user.email,
+            'Verify Your Email',
+            `Your OTP code is: ${otp}`,
+            otpHtml
         );
-
-        res.cookie('refreshToken', refreshToken, {
-            httpOnly: true,
-            secure: config.NODE_ENV === 'production',
-            sameSite: 'strict',
-            maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
-        });
 
         return res.status(201).json({ message: 'User registered successfully', 
             user: {
                 username: user.username,
-                email: user.email
+                email: user.email,
+                verified: user.verified
             },
-            token: accessToken,
          });
     } catch (error) {
         return res.status(500).json({ message: 'Internal server error' });
@@ -150,6 +173,10 @@ export const login = async (req, res) => {
 
         if (!user) {
             return res.status(404).json({ message: 'User not found' });
+        }
+
+        if (!user.verified) {
+            return res.status(403).json({ message: 'User not verified' });
         }
 
         const hashedPassword = crypto.createHash('sha256').update(password).digest('hex');
@@ -243,6 +270,42 @@ export const logoutAll = async (req, res) => {
         res.clearCookie('refreshToken');
 
         return res.status(200).json({ message: 'Logged out from all sessions successfully' });
+    } catch (error) {
+        return res.status(500).json({ message: 'Internal server error' });
+    }
+};
+
+export const verifyEmail = async (req, res) => {
+    try {
+        const { email, otp } = req.body;
+
+        const user = await User.findOne({ email });
+
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        const otpRecord = await Otp.findOne({ email, user: user._id });
+
+        if (!otpRecord) {
+            return res.status(400).json({ message: 'OTP not found' });
+        }
+
+        if (otpRecord.expiresAt < new Date()) {
+            return res.status(400).json({ message: 'OTP expired' });
+        }
+
+        const otpHash = crypto.createHash('sha256').update(otp).digest('hex');
+
+        if (otpHash !== otpRecord.otpHash) {
+            return res.status(400).json({ message: 'Invalid OTP' });
+        }
+
+        user.verified = true;
+        await user.save();
+        await Otp.deleteMany({ email, user: user._id });
+
+        return res.status(200).json({ message: 'Email verified successfully' });
     } catch (error) {
         return res.status(500).json({ message: 'Internal server error' });
     }
