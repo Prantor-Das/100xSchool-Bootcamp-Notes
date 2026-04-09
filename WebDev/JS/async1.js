@@ -64,6 +64,9 @@ function fsReadFilePromisified(filepath, encoding) {
 fs.readFile("a.txt", "utf-8", callback);
 
 // fsReadFilePromisified("a.txt", "utf-8").then(callback);
+// Calling a promisified function
 fsReadFilePromisified("a.txt", "utf-8")
   .then(trying)
   .catch(catchErr)
+
+ 
